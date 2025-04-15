@@ -39,7 +39,7 @@ public class AlzheimerService {
     public AlzheimerService(ResourceLoader resourceLoader) throws OrtException, IOException {
 
         this.env = OrtEnvironment.getEnvironment();
-        Resource resource = resourceLoader.getResource("classpath:alzheimer (1).onnx");
+        Resource resource = resourceLoader.getResource("classpath:alzheimer.onnx");
         Path modelPath = resource.getFile().toPath();
 
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
