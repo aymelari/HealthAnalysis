@@ -5,11 +5,11 @@ import lombok.RequiredArgsConstructor;
 
 import org.example.healthanalysis.Service.AlzheimerService;
 import org.example.healthanalysis.Service.LungService;
-import org.example.healthanalysis.Service.MedicalService;
+import org.example.healthanalysis.Service.MedicalScanService;
+import org.example.healthanalysis.dto.MedicalScanRequestDto;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Map;
@@ -20,13 +20,16 @@ import java.util.Map;
 public class ModelProcessingController {
     public final AlzheimerService alzheimerService;
     private final LungService lungService;
-    private final MedicalService medicalService;
+    private final MedicalScanService medicalService;
 
     @PostMapping(value = "/alz", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> predictAlz(@RequestParam("file") MultipartFile file) throws IOException {
+    public ResponseEntity<String> predictAlz(@ModelAttribute  MedicalScanRequestDto medicalScanRequestDto) throws IOException {
         try {
-            String prediction = alzheimerService.predictFromFile(file);
+
+            String path=medicalService.saveFileToDisk(medicalScanRequestDto.getMultipartFile());
+            String prediction = alzheimerService.predictFromFile(medicalScanRequestDto,path);
             return ResponseEntity.ok(prediction);
+
         } catch (IOException | OrtException e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body("Prediction failed: " + e.getMessage());
@@ -34,7 +37,13 @@ public class ModelProcessingController {
     }
 
     @PostMapping(value="/lung" ,consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Map<String, Object> predictLung(@RequestParam("image") MultipartFile file) throws Exception {
-        return lungService.predict(file);
+    public ResponseEntity<String> predictLung(@ModelAttribute  MedicalScanRequestDto medicalScanRequestDto) throws Exception {
+        String path=medicalService.saveFileToDisk(medicalScanRequestDto.getMultipartFile());
+        String predict = lungService.predict(medicalScanRequestDto,path);
+
+        return ResponseEntity.ok(predict);
     }
+
+
+
 }

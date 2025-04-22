@@ -1,6 +1,9 @@
 package org.example.healthanalysis.Service;
 
 import ai.onnxruntime.*;
+import org.example.healthanalysis.Repo.MedicalScanRepository;
+import org.example.healthanalysis.Repo.UserRepository;
+import org.example.healthanalysis.dto.MedicalScanRequestDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -19,7 +22,9 @@ import java.util.Collections;
 
 @Service
 public class AlzheimerService {
-
+     private final UserRepository userRepository;
+     private final MedicalScanRepository medicalScanRepository;
+     private final MedicalScanService medicalScanService;
     private final OrtEnvironment env;
     private final OrtSession session;
     private static final String[] CLASS_LABELS = {
@@ -36,7 +41,10 @@ public class AlzheimerService {
     private static final boolean USE_NORMALIZATION = false;
 
     @Autowired
-    public AlzheimerService(ResourceLoader resourceLoader) throws OrtException, IOException {
+    public AlzheimerService(ResourceLoader resourceLoader, UserRepository userRepository, MedicalScanRepository medicalScanRepository, MedicalScanService medicalScanService) throws OrtException, IOException {
+        this.userRepository = userRepository;
+        this.medicalScanRepository = medicalScanRepository;
+        this.medicalScanService = medicalScanService;
 
         this.env = OrtEnvironment.getEnvironment();
         Resource resource = resourceLoader.getResource("classpath:alzheimer.onnx");
@@ -49,8 +57,8 @@ public class AlzheimerService {
         System.out.println("Model expects input type: " + session.getInputInfo());
     }
 
-    public String predictFromFile(MultipartFile file) throws IOException, OrtException {
-        BufferedImage image = ImageIO.read(file.getInputStream());
+    public String predictFromFile(MedicalScanRequestDto medicalScanRequestDto,String filePath) throws IOException, OrtException {
+        BufferedImage image = ImageIO.read(medicalScanRequestDto.getMultipartFile().getInputStream());
         if (image == null) {
             throw new IOException("Unsupported image format");
         }
@@ -73,9 +81,14 @@ public class AlzheimerService {
              OrtSession.Result output = session.run(Collections.singletonMap(
                      session.getInputNames().iterator().next(),
                      inputTensor
-             ))) {
-            return parseModelOutput(output);
+             )))
+
+        {
+            String prediction = parseModelOutput(output);
+            medicalScanService.saveMedicalScan(medicalScanRequestDto, prediction, "Alzheimer",filePath);
+            return prediction;
         }
+
     }
 
     private void printImageStats(BufferedImage image) {

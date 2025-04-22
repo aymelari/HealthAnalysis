@@ -2,6 +2,7 @@ package org.example.healthanalysis.Service;
 
 import ai.onnxruntime.*;
 import jakarta.annotation.PostConstruct;
+import org.example.healthanalysis.dto.MedicalScanRequestDto;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
@@ -17,6 +18,11 @@ public class LungService {
 
     private OrtSession session;
     private OrtEnvironment env;
+    private MedicalScanService medicalScanService;
+
+    public LungService(MedicalScanService medicalScanService) {
+        this.medicalScanService = medicalScanService;
+    }
 
     @PostConstruct
     public void init() throws Exception {
@@ -26,8 +32,8 @@ public class LungService {
         }
     }
 
-    public Map<String, Object> predict(MultipartFile file) throws Exception {
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
+    public String predict(MedicalScanRequestDto medicalScanRequestDto,String path) throws Exception {
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(medicalScanRequestDto.getMultipartFile().getBytes()));
         float[] inputData = preprocessImage(image);
 
         long[] shape = {1, 224, 224, 3}; // NHWC
@@ -36,10 +42,10 @@ public class LungService {
         try (OrtSession.Result results = session.run(Collections.singletonMap("input", tensor))) {
             float[][] output = (float[][]) results.get(0).getValue();
             float confidence = output[0][0];
-            return Map.of(
-                    "prediction", confidence > 0.5 ? "cancerous" : "non-cancerous",
-                    "confidence", confidence
-            );
+            String prediction = confidence > 0.5 ? "cancerous" : "non-cancerous";
+            String result=String.format("Prediction: %s | Confidence: %.2f", prediction, confidence);
+            medicalScanService.saveMedicalScan(medicalScanRequestDto,result,"Lung cancer",path);
+            return result;
         }
     }
 
