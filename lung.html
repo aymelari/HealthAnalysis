@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Lung Scan</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: url('stethoscope-medical-equipment.jpg') no-repeat center center fixed;
+      background-size: cover;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 20px;
+      min-height: 100vh;
+    }
+
+    .back-button {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(to right, #e8f5e9, #e3f2fd);
+      color: #333;
+      padding: 12px 20px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+      text-decoration: none;
+      font-weight: bold;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      z-index: 10;
+    }
+
+    .back-button:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 20px rgba(0,0,0,0.15);
+    }
+
+    h2 {
+      color: #fff;
+      margin-bottom: 20px;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+    }
+
+    form {
+      padding: 40px 30px;
+      border-radius: 20px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 20px;
+      transition: transform 0.3s ease;
+      background-color: rgba(255, 255, 255, 0.4);
+    }
+
+    form:hover {
+      transform: translateY(-3px);
+    }
+
+    label {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    .result {
+      margin-top: 30px;
+      font-weight: bold;
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .image-preview {
+      margin-top: 20px;
+      max-width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+
+<a href="/Health.html" class="back-button">🏠 Back to Home</a>
+
+<h2>🫁 Upload Lung Scan</h2>
+
+<form id="lungForm" enctype="multipart/form-data">
+  <label for="multipartFile">Select Scan Image:</label>
+  <input type="file" id="multipartFile" name="multipartFile" accept="image/*" required />
+
+  <input type="hidden" name="userId" value="1" />
+  <input type="hidden" name="uploadDate" id="uploadDate" />
+
+  <button type="submit">Submit for Prediction</button>
+</form>
+
+<div class="result" id="result"></div>
+<div id="preview"></div>
+
+<script>
+  const form = document.getElementById("lungForm");
+  const resultDiv = document.getElementById("result");
+  const uploadDateField = document.getElementById("uploadDate");
+  const previewDiv = document.getElementById("preview");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const now = new Date();
+    uploadDateField.value = now.toISOString();
+
+    const formData = new FormData(form);
+    const fileInput = document.getElementById("multipartFile");
+    const file = fileInput.files[0];
+
+    // Preview image
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        previewDiv.innerHTML = `<img src="${e.target.result}" alt="Uploaded Image" style="max-width: 300px; margin-top: 10px;" />`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    try {
+      const response = await fetch("http://localhost:8090/model/lung", {
+        method: "POST",
+        body: formData
+      });
+
+      const text = await response.text();
+
+      if (response.ok) {
+        const data = JSON.parse(text);
+        const predictedClass = data.predicted_class || "Unknown";
+        const confidence = (data.confidence * 100).toFixed(2) + "%";
+
+        resultDiv.innerHTML = `
+          ✅ <strong>Prediction:</strong> ${predictedClass}<br>
+          📊 <strong>Confidence:</strong> ${confidence}
+        `;
+      } else {
+        resultDiv.innerText = "❌ Error: " + text;
+      }
+    } catch (err) {
+      resultDiv.innerText = "⚠️ Something went wrong: " + err.message;
+    }
+  });
+</script>
+
+</body>
+</html>
