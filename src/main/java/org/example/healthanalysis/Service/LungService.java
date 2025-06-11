@@ -2,21 +2,70 @@ package org.example.healthanalysis.Service;
 
 import ai.onnxruntime.*;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import org.example.healthanalysis.dto.MedicalScanRequestDto;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.Collections;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class LungService {
 
-    private OrtSession session;
+    private static final String URL = "https://9517-185-146-113-28.ngrok-free.app/predict-lung/";
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final MedicalScanService medicalScanService;
+
+    public String callPredictAPI(MedicalScanRequestDto medicalScanRequestDto, String filePath) throws IOException {
+        // Prepare data
+        MultipartFile multipartFile = medicalScanRequestDto.getMultipartFile();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        // 2. Prepare multipart body
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+
+        // Add the file part
+        ByteArrayResource fileResource = new ByteArrayResource(multipartFile.getBytes()) {
+            @Override
+            public String getFilename() {
+                return multipartFile.getOriginalFilename(); // Important for file recognition
+            }
+        };
+        body.add("file", fileResource); // Key must match FastAPI's expected field name
+
+        // 3. Create the request entity
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        // 4. Send the request
+        ResponseEntity<String> response = restTemplate.exchange(
+                URL,
+                HttpMethod.POST,
+                requestEntity,
+                String.class
+        );
+
+        // 5. Save results
+        String responseBody = response.getBody();
+        medicalScanService.saveMedicalScan(medicalScanRequestDto, responseBody, "Lung", filePath);
+
+        return responseBody;
+    }
+}
+   /* private OrtSession session;
     private OrtEnvironment env;
     private MedicalScanService medicalScanService;
 
@@ -120,5 +169,5 @@ public class LungService {
                 floatArray[index++] = normalized;
             }
         return floatArray;
-    }
-}
+    }*/
+

@@ -24,22 +24,16 @@ public class ModelProcessingController {
 
     @PostMapping(value = "/alz", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> predictAlz(@ModelAttribute  MedicalScanRequestDto medicalScanRequestDto) throws IOException {
-        try {
 
             String path=medicalService.saveFileToDisk(medicalScanRequestDto.getMultipartFile());
-            String prediction = alzheimerService.predictFromFile(medicalScanRequestDto,path);
+            String prediction = alzheimerService.callPredictAPI(medicalScanRequestDto,path);
             return ResponseEntity.ok(prediction);
-
-        } catch (IOException | OrtException e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Prediction failed: " + e.getMessage());
-        }
     }
 
     @PostMapping(value="/lung" ,consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> predictLung(@ModelAttribute  MedicalScanRequestDto medicalScanRequestDto) throws Exception {
         String path=medicalService.saveFileToDisk(medicalScanRequestDto.getMultipartFile());
-        String predict = lungService.predict(medicalScanRequestDto,path);
+        String predict = lungService.callPredictAPI(medicalScanRequestDto,path);
 
         return ResponseEntity.ok(predict);
     }

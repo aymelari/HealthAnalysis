@@ -1,51 +1,89 @@
 package org.example.healthanalysis.Service;
 
-import ai.onnxruntime.*;
-import org.example.healthanalysis.Repo.MedicalScanRepository;
-import org.example.healthanalysis.Repo.UserRepository;
+
+
+import lombok.RequiredArgsConstructor;
 import org.example.healthanalysis.dto.MedicalScanRequestDto;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.nio.FloatBuffer;
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class AlzheimerService {
-     private final UserRepository userRepository;
-     private final MedicalScanRepository medicalScanRepository;
-     private final MedicalScanService medicalScanService;
+    private final MedicalScanService medicalScanService;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private static final String URL = "https://91ea-185-146-113-28.ngrok-free.app/predict/";
+
+    public String callPredictAPI(MedicalScanRequestDto medicalScanRequestDto, String filePath) throws IOException {
+        // Prepare data
+        MultipartFile multipartFile = medicalScanRequestDto.getMultipartFile();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        // 2. Prepare multipart body
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+
+        // Add the file part
+        ByteArrayResource fileResource = new ByteArrayResource(multipartFile.getBytes()) {
+            @Override
+            public String getFilename() {
+                return multipartFile.getOriginalFilename(); // Important for file recognition
+            }
+        };
+        body.add("file", fileResource); // Key must match FastAPI's expected field name
+
+        // 3. Create the request entity
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        // 4. Send the request
+        ResponseEntity<String> response = restTemplate.exchange(
+                URL,
+                HttpMethod.POST,
+                requestEntity,
+                String.class
+        );
+
+        // 5. Save results
+        String responseBody = response.getBody();
+        medicalScanService.saveMedicalScan(medicalScanRequestDto, responseBody, "Alzheimer", filePath);
+
+        return responseBody;
+    }
+}
+
+   /* private final MedicalScanService medicalScanService;
     private final OrtEnvironment env;
     private final OrtSession session;
     private static final String[] CLASS_LABELS = {
-            "No Impairment",
-            "Very Mild Impairment",
             "Mild Impairment",
-            "Moderate Impairment"
+            "Moderate Impairment",
+            "No Impairment",
+            "Very Mild Impairment"
     };
 
-    // Configuration parameters (verify with model author)
+    // Updated configuration parameters for EfficientNetV2
     private static final boolean USE_BGR = false;
-    private static final boolean USE_I0MAGENET_NORMALIZATION = true;
     private static final boolean SAVE_DEBUG_IMAGE = true;
-    private static final boolean USE_NORMALIZATION = false;
+
+    // EfficientNetV2 normalization constants
+    private static final float[] MEAN = {0.485f, 0.456f, 0.406f};
+    private static final float[] STD = {0.229f, 0.224f, 0.225f};
 
     @Autowired
-    public AlzheimerService(ResourceLoader resourceLoader, UserRepository userRepository, MedicalScanRepository medicalScanRepository, MedicalScanService medicalScanService) throws OrtException, IOException {
-        this.userRepository = userRepository;
-        this.medicalScanRepository = medicalScanRepository;
+    public AlzheimerService(ResourceLoader resourceLoader, UserRepository userRepository,
+                            MedicalScanRepository medicalScanRepository, MedicalScanService medicalScanService)
+            throws OrtException, IOException {
         this.medicalScanService = medicalScanService;
-
         this.env = OrtEnvironment.getEnvironment();
         Resource resource = resourceLoader.getResource("classpath:alzheimer.onnx");
         Path modelPath = resource.getFile().toPath();
@@ -57,13 +95,16 @@ public class AlzheimerService {
         System.out.println("Model expects input type: " + session.getInputInfo());
     }
 
-    public String predictFromFile(MedicalScanRequestDto medicalScanRequestDto,String filePath) throws IOException, OrtException {
+    public String predictFromFile(MedicalScanRequestDto medicalScanRequestDto, String filePath)
+            throws IOException, OrtException {
         BufferedImage image = ImageIO.read(medicalScanRequestDto.getMultipartFile().getInputStream());
         if (image == null) {
             throw new IOException("Unsupported image format");
         }
+
         System.out.println("Original image statistics:");
         printImageStats(image);
+
         // Convert to RGB and resize first
         image = ensureRGBFormat(image);
         image = resizeImage(image, 224, 224);
@@ -81,14 +122,11 @@ public class AlzheimerService {
              OrtSession.Result output = session.run(Collections.singletonMap(
                      session.getInputNames().iterator().next(),
                      inputTensor
-             )))
-
-        {
+             ))) {
             String prediction = parseModelOutput(output);
-            medicalScanService.saveMedicalScan(medicalScanRequestDto, prediction, "Alzheimer",filePath);
+            medicalScanService.saveMedicalScan(medicalScanRequestDto, prediction, "Alzheimer", filePath);
             return prediction;
         }
-
     }
 
     private void printImageStats(BufferedImage image) {
@@ -98,7 +136,6 @@ public class AlzheimerService {
     }
 
     private BufferedImage ensureRGBFormat(BufferedImage image) {
-        // Always create new RGB image to prevent color space contamination
         BufferedImage rgbImage = new BufferedImage(
                 image.getWidth(),
                 image.getHeight(),
@@ -107,6 +144,7 @@ public class AlzheimerService {
         rgbImage.createGraphics().drawImage(image, 0, 0, null);
         return rgbImage;
     }
+
     private void saveDebugImage(BufferedImage image) {
         try {
             File debugFile = File.createTempFile("preprocessed_", ".jpg");
@@ -120,21 +158,34 @@ public class AlzheimerService {
     private float[] preprocessImage(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
-        float[] data = new float[height * width * 3];
+        float[] data = new float[3 * width * height]; // CHW format
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int rgb = image.getRGB(x, y);
-                int index = (y * width + x) * 3;
 
-                // Simple 0-1 scaling without ImageNet normalization
-                data[index] = ((rgb >> 16) & 0xFF) / 255.0f;  // R
-                data[index + 1] = ((rgb >> 8) & 0xFF) / 255.0f;   // G
-                data[index + 2] = (rgb & 0xFF) / 255.0f;         // B
+                // Extract RGB components and scale to [0, 1]
+                float r = ((rgb >> 16) & 0xFF) / 255.0f;
+                float g = ((rgb >> 8) & 0xFF) / 255.0f;
+                float b = (rgb & 0xFF) / 255.0f;
+
+                // Normalize to EfficientNetV2's mean and std values
+                r = (r - MEAN[0]) / STD[0];
+                g = (g - MEAN[1]) / STD[1];
+                b = (b - MEAN[2]) / STD[2];
+
+                // Store in CHW format: data[0] = R, data[1] = G, data[2] = B
+                int idx = y * width + x;
+                data[idx] = r;                      // Channel 0 (Red)
+                data[width * height + idx] = g;     // Channel 1 (Green)
+                data[2 * width * height + idx] = b; // Channel 2 (Blue)
             }
         }
+
         return data;
     }
+
+
     private void logSamplePixels(float[] data) {
         System.out.println("First 10 normalized pixels:");
         for (int i = 0; i < 10; i++) {
@@ -183,5 +234,4 @@ public class AlzheimerService {
         g.drawImage(original, 0, 0, width, height, null);
         g.dispose();
         return resized;
-    }
-}
+    }*/
